@@ -1,3 +1,5 @@
+var https = require('https')
+
 var mqtt = require('mqtt')
 var client = mqtt.connect('mqtt://test.mosquitto.org')
 
@@ -6,7 +8,14 @@ var keypress = require("keypress")
 var sphero = require("sphero");
 var orb = sphero("e5676db2132f");
 
-var opts = {
+var locationOpts = {
+	flags: 0x01,
+	x: 0x0000,
+	y: 0x0000,
+	yawTare: 0x0
+}
+
+var streamOpts = {
 	n:200,
 	m:1,
 	mask1:0x00000000,
@@ -18,8 +27,9 @@ orb.connect(function() {
 	console.log("BB8 is connected...")
 	changeColor("green")
 	console.log("Starting to stream odometer...")
-	orb.setDataStreaming(opts)
-	orb.streamGyroscope()
+	orb.setDataStreaming(streamOpts)
+	orb.configureLocator(locationOpts)
+	//orb.streamGyroscope()
 	keyListener()
 	//orb.roll(150,60);	
 	//orb.getColor(orbColor)
@@ -32,12 +42,11 @@ orb.on("gyroscope",function(data){
 })
 
 orb.on("dataStreaming", function(data){
-	
 	var jsonPayload = jsonifyBB8Message(data.xOdometer.value,data.yOdometer.value,data.xVelocity.value,data.yVelocity.value)	
 	//console.log(jsonPayload)
 	//console.log(data)
+	orb.readLocator(locateOrb)
 	client.publish('presence',jsonPayload)
-	
 })
 
 client.on('connect', function() {
@@ -73,6 +82,17 @@ function handle(ch,key) {
 	if (key.name === "space") {
 		stop()	
 	}
+	if (key.name === "q") {
+		console.log("STARTING CALIBRATION")
+		orb.startCalibration()
+		setTimeout(function() {
+			console.log("CALIBRATION FINISHED")
+			orb.finishCalibration()
+		},5000)
+	}
+	if (key.name === "p") {
+		orb.getPowerState(getBatteryState)
+	}
 	if (key.name === "b") {
 		changeColor("blue")
 	}
@@ -100,17 +120,40 @@ function jsonifyBB8Gyro(key,value) {
 }
 
 function jsonifyColorMessage(color) {
-	var jsonColor = '{"color":"'+color+'"}'
-	return jsonColor
+	var jsonColor = {
+		color:color
+	}
+	return JSON.stringify(jsonColor)
 }
 
-function 
-jsonifyBB8Message(xOdometer,yOdometer,xVel,yVel) {
-	var jsonString = 
-'{"xOdometer":"'+xOdometer+'","yOdometer":"'+yOdometer+'","xVel":"'+xVel+'","yVel":"'+yVel+'"}'
-	var jsonToReturn = JSON.parse(jsonString)
-	console.log(jsonString)
-	return jsonString
+function jsonifyPositionMessage(xpos,ypos) {
+	var jsonPosition = {
+		xPos:xpos,
+		yPos:ypos
+	}	
+	return JSON.stringify(jsonPosition)
+}
+
+function jsonifyBatteryMessage(recVer,batteryState,batteryVoltage,chargeCount,secondsSinceCharge) 
+{
+	var jsonBattery = {
+		recVer:recVer,
+		batteryState:batteryState,
+		batteryVoltage:batteryVoltage,
+		chargeCount:chargeCount,
+		secondsSinceCharge:secondsSinceCharge
+	}
+	return JSON.stringify(jsonBattery)
+}
+
+function jsonifyBB8Message(xOdometer,yOdometer,xVel,yVel) {
+	var jsonString = {
+		xOdometer:xOdometer,
+		yOdometer:yOdometer,
+		xVel:xVel,
+		yVel:yVel
+	}
+	return JSON.stringify(jsonString)
 }
 
 function changeColor(color) {
@@ -120,13 +163,33 @@ function changeColor(color) {
 	});
 }
 
+function getBatteryState(err,data) {
+	if (err) {
+		console.log("error ", err)
+	}
+	else {
+		var jsonBatteryData = jsonifyBatteryMessage(data.recVer,data.batteryState,data.batteryVoltage,data.chargeCount,data.secondsSinceCharge)
+		client.publish('presence',jsonBatteryData)
+	}
+}
+
+function locateOrb(err,data) {
+	if (err) {
+		console.log(err)
+	}
+	else {
+		var jsonPositionData = jsonifyPositionMessage(data.xpos,data.ypos)
+		client.publish('presence',jsonPositionData)
+	}
+}
+
 function orbColor(err, data) {
 	
-		if(err) {
-			console.log(err);
-		}
-		else {
-			var jsonColorString = jsonifyColorMessage(data.color)
-			client.publish('presence',jsonColorString)
-		}
+	if(err) {
+		console.log(err);
+	}
+	else {
+		var jsonColorString = jsonifyColorMessage(data.color)
+		client.publish('presence',jsonColorString)
+	}
 }

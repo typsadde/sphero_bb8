@@ -1,7 +1,7 @@
 var https = require('https')
 
 var mqtt = require('mqtt')
-var client = mqtt.connect('mqtt://test.mosquitto.org')
+var client = mqtt.connect('mqtt://35.157.1.212')
 
 var keypress = require("keypress")
 
@@ -55,8 +55,22 @@ client.on('connect', function() {
 });
 
 client.on('message', function(topic, message) {
+	console.log("Message received!")
+	if (message.toString() == "Blue") {
+		changeColor("blue")		
+	}
+	if (message.toString().substring(0,4) == "roll") {
+		rollCommand = message.toString().split(",")
+		console.log(rollCommand[1] + " " + rollCommand[2])
+		rollBot(rollCommand[1],rollCommand[2])
+	}
 	console.log(message.toString())
 })
+
+function rollBot(speed,direction) {
+	roll = orb.roll.bind(orb,speed)
+	roll(direction)
+}
 
 function handle(ch,key) {
 	var stop = orb.roll.bind(orb,0,0)
